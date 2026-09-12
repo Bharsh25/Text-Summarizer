@@ -2,6 +2,8 @@
 
 A web application that summarizes multi-turn dialogues into a single clean summary line, using a fine-tuned T5 model served through a FastAPI backend.
 
+<img width="1900" height="917" alt="Screenshot 2026-09-12 163941" src="https://github.com/user-attachments/assets/757240bc-927b-4680-85b7-aa3e368f4c4f" />
+
 ## Features
 
 - **Dialogue summarization** — condenses back-and-forth conversations into one concise summary.
