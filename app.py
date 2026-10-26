@@ -14,8 +14,13 @@ from fastapi.staticfiles import StaticFiles
 app = FastAPI(title="Text Summarization APP", description="This is a text summarization APP built using FastAPI and T5 model.", version="1.0.0")
 
 #Load the T5 model and tokenizer
-model = T5ForConditionalGeneration.from_pretrained("./saved_summary_model")
-tokenizer = T5Tokenizer.from_pretrained("./saved_summary_model")
+import os
+from transformers import T5ForConditionalGeneration, T5Tokenizer
+
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saved_summary_model")
+
+tokenizer = T5Tokenizer.from_pretrained(MODEL_DIR)
+model = T5ForConditionalGeneration.from_pretrained(MODEL_DIR)
 
 #DEVICE
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
