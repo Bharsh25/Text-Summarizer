@@ -372,17 +372,22 @@ button.clear:hover{border-color:var(--rust);color:var(--rust);}
 
 <script>
 // Calls the backend. Errors are thrown, never replaced with made-up text.
-async function callSummarizer(dialogue){
-    const res = await fetch('/summarize/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dialogue })
-    });
-    if(!res.ok){
-        throw new Error('Server returned ' + res.status);
+async function callSummarizer(dialogue, retries = 2){
+    for(let attempt = 0; attempt <= retries; attempt++){
+        const res = await fetch('/summarize/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dialogue })
+        });
+        if(res.ok){
+            const data = await res.json();
+            return data.summary;
+        }
+        if(res.status !== 502 && res.status !== 503 || attempt === retries){
+            throw new Error('Server returned ' + res.status);
+        }
+        await new Promise(r => setTimeout(r, 15000));
     }
-    const data = await res.json();
-    return data.summary;
 }
 
 const examples = [
