@@ -1,79 +1,91 @@
-#fastapi - python based webframework for building APIs
+import os
 import re
 
-from fastapi import FastAPI,Request
-from pydantic import BaseModel #python module used to validate the request body
-
-from transformers import T5ForConditionalGeneration, T5Tokenizer
 import torch
-from fastapi.templating import Jinja2Templates # UI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-
-#initialize the FastAPI app
-app = FastAPI(title="Text Summarization APP", description="This is a text summarization APP built using FastAPI and T5 model.", version="1.0.0")
-
-#Load the T5 model and tokenizer
-import os
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
-MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saved_summary_model")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(BASE_DIR, "saved_summary_model")
+MODEL_FILE = os.path.join(MODEL_DIR, "model.safetensors")
+
+app = FastAPI(
+    title="Text Summarization APP",
+    description="Summarizes dialogues with a fine-tuned T5 model.",
+    version="1.0.0",
+)
+
+# Fail at startup with a clear message if the model is missing or is only a Git LFS pointer.
+if not os.path.isfile(MODEL_FILE):
+    raise RuntimeError(
+        f"model.safetensors not found in {MODEL_DIR}. "
+        "Check that the model was committed and pulled with Git LFS."
+    )
+if os.path.getsize(MODEL_FILE) < 1_000_000:
+    raise RuntimeError(
+        "model.safetensors is a small Git LFS pointer, not the real model. "
+        "Run 'git lfs pull' or check the LFS upload."
+    )
 
 tokenizer = T5Tokenizer.from_pretrained(MODEL_DIR)
-model = T5ForConditionalGeneration.from_pretrained(MODEL_DIR)
+model = T5ForConditionalGeneration.from_pretrained(MODEL_DIR, low_cpu_mem_usage=True)
 
-#DEVICE
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
+model.to(device)
+model.eval()
 
-#templating
-templates = Jinja2Templates(directory=".")
+templates = Jinja2Templates(directory=BASE_DIR)
 
-#input schema for the dialogue =>string
+
 class DialogueInput(BaseModel):
     dialogue: str
 
-def clean_data(text):
-    text=re.sub(r"\r\n"," ",text) #lines
-    text=re.sub(r"\s+"," ",text) #Spaces
-    text=re.sub(r"<.*?>"," ",text) #html tags
-    text=text.strip().lower()
-    return text
 
-def summarize_dialogue(dialogue:str)->str:
-    dialogue=clean_data(dialogue) # clean
+def clean_data(text: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", text)  # strip HTML tags
+    text = re.sub(r"\s+", " ", text)      # collapse line breaks and extra spaces
+    return text.strip()
 
-    #tokenize
-    inputs=tokenizer(
-        dialogue,
-        padding="max_length",
+
+def summarize_dialogue(dialogue: str) -> str:
+    cleaned = clean_data(dialogue)
+
+    inputs = tokenizer(
+        cleaned,
         max_length=512,
         truncation=True,
-        return_tensors="pt" # pytorch tensors
+        return_tensors="pt",
     ).to(device)
-    
-    #generate the summary => tokens id
-    model.to(device)
-    targets=model.generate(
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_length=150,
-        num_beams=4, # it will generate 4 diff outputs and it will give the best among that
-        early_stopping=True
-    )
 
-    #tokens id convert to text => Decoding
-    summary=tokenizer.decode(targets[0],skip_special_tokens=True) #EOS,SEP,SPACES
-    return summary
+    with torch.no_grad():
+        output_ids = model.generate(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            max_length=150,
+            num_beams=4,
+            early_stopping=True,
+        )
 
-#API endpoint for summarization
+    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
-#GET API
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse(request, "index.html", {})
 
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "device": str(device)}
+
+
+# Plain def (not async) so the blocking model call runs in a worker thread.
 @app.post("/summarize/")
-async def summarize(dialogue_input: DialogueInput):
+def summarize(dialogue_input: DialogueInput):
+    if not dialogue_input.dialogue.strip():
+        raise HTTPException(status_code=400, detail="Dialogue is empty.")
     summary = summarize_dialogue(dialogue_input.dialogue)
     return {"summary": summary}

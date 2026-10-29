@@ -162,6 +162,10 @@ textarea:focus{border-color:var(--brass);}
     justify-content:center;
     text-align:center;
 }
+.output-box.error{
+    color:var(--rust);
+    font-size:14px;
+}
 .output-box .cursor{
     display:inline-block;
     width:8px;height:16px;
@@ -183,7 +187,7 @@ textarea:focus{border-color:var(--brass);}
     gap:16px;
     position:relative;
 }
-.gauge-col::before, .gauge-col::after{ 
+.gauge-col::before, .gauge-col::after{
     content:"";
     position:absolute;
     left:50%;
@@ -219,11 +223,6 @@ textarea:focus{border-color:var(--brass);}
     text-align:center;
     writing-mode:vertical-rl;
     transform:rotate(180deg);
-}
-
-.arrow-flow{
-    font-size:18px;
-    color:var(--paper-dim);
 }
 
 /* ---------- Controls ---------- */
@@ -300,15 +299,14 @@ button.clear:hover{border-color:var(--rust);color:var(--rust);}
 }
 .chip:hover{border-color:var(--signal);color:var(--signal);}
 
-
 @media (max-width:760px){
     .desk{grid-template-columns:1fr;}
     .gauge-col{
-    flex-direction:row;
-    border-left:none;border-right:none;
-    border-top:1px solid var(--line);
-    border-bottom:1px solid var(--line);
-    padding:14px 0;
+        flex-direction:row;
+        border-left:none;border-right:none;
+        border-top:1px solid var(--line);
+        border-bottom:1px solid var(--line);
+        padding:14px 0;
     }
     .gauge-col::before,.gauge-col::after{display:none;}
     .gauge-caption{writing-mode:horizontal-tb;transform:none;}
@@ -326,37 +324,37 @@ button.clear:hover{border-color:var(--rust);color:var(--rust);}
     <div class="eyebrow">Fine-tuned T5 Model</div>
     <h1>Dialogue <span>Summarizer</span></h1>
     <p class="sub">Paste a conversation. The model strips the back-and-forth and prints
-    the -> one clean line of what actually happened.</p>
+    the → one clean line of what actually happened.</p>
 </div>
 
 <div class="desk">
     <div class="pane">
-    <div class="pane-label">
-        <span class="tag-in">Transmission In</span>
-        <span class="count" id="inCount">0 tokens</span>
-    </div>
-    <textarea id="dialogueInput" placeholder="Paste your conversation here..."></textarea>
+        <div class="pane-label">
+            <span class="tag-in">Transmission In</span>
+            <span class="count" id="inCount">0 words</span>
+        </div>
+        <textarea id="dialogueInput" placeholder="Paste your conversation here..."></textarea>
     </div>
 
     <div class="gauge-col">
-    <div class="gauge">
-        <svg width="44" height="44" viewBox="0 0 44 44">
-        <circle cx="22" cy="22" r="19" fill="none" stroke="rgba(240,236,225,0.08)" stroke-width="3"/>
-        <circle id="gaugeRing" cx="22" cy="22" r="19" fill="none" stroke="#4fa98c" stroke-width="3"
-                stroke-linecap="round" stroke-dasharray="119.4" stroke-dashoffset="119.4"
-                transform="rotate(-90 22 22)" style="transition:stroke-dashoffset .6s ease;"/>
-        </svg>
-        <span class="gauge-pct" id="gaugePct">0%</span>
-    </div>
-    <span class="gauge-caption">Compression</span>
+        <div class="gauge">
+            <svg width="44" height="44" viewBox="0 0 44 44">
+                <circle cx="22" cy="22" r="19" fill="none" stroke="rgba(240,236,225,0.08)" stroke-width="3"/>
+                <circle id="gaugeRing" cx="22" cy="22" r="19" fill="none" stroke="#4fa98c" stroke-width="3"
+                        stroke-linecap="round" stroke-dasharray="119.4" stroke-dashoffset="119.4"
+                        transform="rotate(-90 22 22)" style="transition:stroke-dashoffset .6s ease;"/>
+            </svg>
+            <span class="gauge-pct" id="gaugePct">0%</span>
+        </div>
+        <span class="gauge-caption">Compression</span>
     </div>
 
     <div class="pane">
-    <div class="pane-label">
-        <span class="tag-out">Signal Out</span>
-        <span class="count" id="outCount">0 tokens</span>
-    </div>
-    <div class="output-box empty" id="outputBox">Summary will print here once the press summarize.</div>
+        <div class="pane-label">
+            <span class="tag-out">Signal Out</span>
+            <span class="count" id="outCount">0 words</span>
+        </div>
+        <div class="output-box empty" id="outputBox">Summary will print here once you press Summarize.</div>
     </div>
 </div>
 
@@ -372,31 +370,19 @@ button.clear:hover{border-color:var(--rust);color:var(--rust);}
     <button class="chip" data-ex="2">Late for work</button>
 </div>
 
-
 <script>
-
+// Calls the backend. Errors are thrown, never replaced with made-up text.
 async function callSummarizer(dialogue){
-try{
     const res = await fetch('/summarize/', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ dialogue })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dialogue })
     });
-    if(!res.ok) throw new Error('backend error: ' + res.status);
+    if(!res.ok){
+        throw new Error('Server returned ' + res.status);
+    }
     const data = await res.json();
     return data.summary;
-}catch(e){
-    // Demo fallback so the page still works without a backend wired up.
-    return demoSummarize(dialogue);
-}
-}
-
-function demoSummarize(text){
-const sentences = text.trim().split('\n').filter(Boolean);
-if(sentences.length === 0) return '';
-const names = [...new Set(sentences.map(s => s.split(':')[0].trim()).filter(n => n && n.length < 20))];
-const who = names.length ? names.join(' and ') : 'They';
-return `${who} discussed plans and agreed on the details mentioned above.`;
 }
 
 const examples = [
@@ -427,77 +413,99 @@ const gaugePct = document.getElementById('gaugePct');
 
 const CIRC = 119.4;
 
+// Word count (the UI shows words, not model tokens)
 function wc(str){
-return str.trim() ? str.trim().split(/\s+/).length : 0;
+    return str.trim() ? str.trim().split(/\s+/).length : 0;
 }
 
 function updateInCount(){
-inCount.textContent = wc(dialogueInput.value) + ' tokens';
+    inCount.textContent = wc(dialogueInput.value) + ' words';
 }
 dialogueInput.addEventListener('input', updateInCount);
 
 function setGauge(inWords, outWords){
-let pct = 0;
-if(inWords > 0 && outWords >= 0){
-    pct = Math.max(0, Math.min(100, Math.round((1 - outWords / inWords) * 100)));
+    let pct = 0;
+    if(inWords > 0 && outWords >= 0){
+        pct = Math.max(0, Math.min(100, Math.round((1 - outWords / inWords) * 100)));
+    }
+    const offset = CIRC - (CIRC * pct / 100);
+    gaugeRing.style.strokeDashoffset = offset;
+    gaugePct.textContent = pct + '%';
 }
-const offset = CIRC - (CIRC * pct / 100);
-gaugeRing.style.strokeDashoffset = offset;
-gaugePct.textContent = pct + '%';
+
+function showError(message){
+    outputBox.classList.remove('empty');
+    outputBox.classList.add('error');
+    outputBox.textContent = message;
+}
+
+function clearError(){
+    outputBox.classList.remove('error');
 }
 
 document.querySelectorAll('.chip').forEach(chip=>{
-chip.addEventListener('click', ()=>{
-    dialogueInput.value = examples[chip.dataset.ex];
-    updateInCount();
-    dialogueInput.focus();
-});
+    chip.addEventListener('click', ()=>{
+        dialogueInput.value = examples[chip.dataset.ex];
+        updateInCount();
+        dialogueInput.focus();
+    });
 });
 
 clearBtn.addEventListener('click', ()=>{
-dialogueInput.value = '';
-updateInCount();
-outputBox.textContent = 'Summary will print here once the press runs.';
-outputBox.classList.add('empty');
-outCount.textContent = '0 tokens';
-setGauge(0,0);
+    dialogueInput.value = '';
+    updateInCount();
+    clearError();
+    outputBox.textContent = 'Summary will print here once you press Summarize.';
+    outputBox.classList.add('empty');
+    outCount.textContent = '0 words';
+    setGauge(0,0);
 });
 
 runBtn.addEventListener('click', async ()=>{
-const text = dialogueInput.value.trim();
-if(!text){
-    dialogueInput.focus();
-    dialogueInput.style.borderColor = '#b24c3d';
-    setTimeout(()=> dialogueInput.style.borderColor = '', 500);
-    return;
-}
-
-runBtn.disabled = true;
-runBtn.textContent = '▸ Summarizing…';
-outputBox.classList.remove('empty');
-outputBox.innerHTML = '<span class="cursor"></span>';
-
-const summary = await callSummarizer(text);
-
-// simple typewriter print for the "press" feel
-outputBox.textContent = '';
-let i = 0;
-const speed = 14;
-function type(){
-    if(i <= summary.length){
-    outputBox.textContent = summary.slice(0, i);
-    outputBox.insertAdjacentHTML('beforeend', '<span class="cursor"></span>');
-    i++;
-    setTimeout(type, speed);
-    }else{
-    outputBox.textContent = summary;
-    outCount.textContent = wc(summary) + ' tokens';
-    setGauge(wc(text), wc(summary));
-    runBtn.disabled = false;
-    runBtn.textContent = '▸ Summarize';
+    const text = dialogueInput.value.trim();
+    if(!text){
+        dialogueInput.focus();
+        dialogueInput.style.borderColor = '#b24c3d';
+        setTimeout(()=> dialogueInput.style.borderColor = '', 500);
+        return;
     }
-}
-type();
+
+    runBtn.disabled = true;
+    runBtn.textContent = '▸ Summarizing…';
+    clearError();
+    outputBox.classList.remove('empty');
+    outputBox.innerHTML = '<span class="cursor"></span>';
+
+    let summary;
+    try{
+        summary = await callSummarizer(text);
+    }catch(err){
+        console.error(err);
+        showError('Summarizer unavailable: ' + err.message + '. Please try again in a minute.');
+        runBtn.disabled = false;
+        runBtn.textContent = '▸ Summarize';
+        return;
+    }
+
+    // Typewriter print for the "press" feel
+    outputBox.textContent = '';
+    let i = 0;
+    const speed = 14;
+    function type(){
+        if(i <= summary.length){
+            outputBox.textContent = summary.slice(0, i);
+            outputBox.insertAdjacentHTML('beforeend', '<span class="cursor"></span>');
+            i++;
+            setTimeout(type, speed);
+        }else{
+            outputBox.textContent = summary;
+            outCount.textContent = wc(summary) + ' words';
+            setGauge(wc(text), wc(summary));
+            runBtn.disabled = false;
+            runBtn.textContent = '▸ Summarize';
+        }
+    }
+    type();
 });
 
 updateInCount();
